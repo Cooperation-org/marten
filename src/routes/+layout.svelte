@@ -5,11 +5,13 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { currentProject } from '$lib/stores/project';
-	import { getProjects } from '$lib/api/projects';
+	import { getProjects, updateProjectTags, isArchived } from '$lib/api/projects';
 	import type { Project } from '$lib/api/types';
 
 	let projects: Project[] = [];
-	let showProjectDropdown = false;
+	let showArchived = false;
+	let contextMenuProject: Project | null = null;
+	let contextMenuPos = { x: 0, y: 0 };
 
 	onMount(() => {
 		auth.init();
@@ -25,12 +27,18 @@
 		loadProjects();
 	}
 
+	// Filter projects based on archive status
+	$: activeProjects = projects.filter(p => !isArchived(p));
+	$: archivedProjects = projects.filter(p => isArchived(p));
+	$: displayedProjects = showArchived ? archivedProjects : activeProjects;
+
 	async function loadProjects() {
 		try {
 			projects = await getProjects();
-			// Auto-select first project if none selected
-			if (projects.length > 0 && !$currentProject) {
-				currentProject.set(projects[0]);
+			// Auto-select first active project if none selected
+			const active = projects.filter(p => !isArchived(p));
+			if (active.length > 0 && !$currentProject) {
+				currentProject.set(active[0]);
 			}
 		} catch (err) {
 			console.error('Failed to load projects:', err);
@@ -39,7 +47,6 @@
 
 	function selectProject(project: Project) {
 		currentProject.set(project);
-		showProjectDropdown = false;
 	}
 
 	function handleLogout() {
@@ -51,9 +58,52 @@
 		return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 	}
 
+	function handleContextMenu(event: MouseEvent, project: Project) {
+		event.preventDefault();
+		contextMenuProject = project;
+		contextMenuPos = { x: event.clientX, y: event.clientY };
+	}
+
+	function closeContextMenu() {
+		contextMenuProject = null;
+	}
+
+	async function toggleArchive(project: Project) {
+		const archived = isArchived(project);
+		let newTags: [string, string | null][];
+
+		if (archived) {
+			// Remove archived tag
+			newTags = (project.tags || []).filter(([tag]) => tag.toLowerCase() !== 'archived');
+		} else {
+			// Add archived tag
+			newTags = [...(project.tags || []), ['archived', null]];
+		}
+
+		try {
+			const updated = await updateProjectTags(project.id, newTags);
+			// Update local state
+			projects = projects.map(p => p.id === updated.id ? updated : p);
+
+			// If we archived the current project, switch to another
+			if (!archived && $currentProject?.id === project.id) {
+				const active = projects.filter(p => !isArchived(p));
+				if (active.length > 0) {
+					currentProject.set(active[0]);
+				}
+			}
+		} catch (err) {
+			console.error('Failed to update project:', err);
+		}
+
+		closeContextMenu();
+	}
+
 	// Check if current route is login
 	$: isLoginPage = $page.url.pathname.startsWith('/login');
 </script>
+
+<svelte:window on:click={closeContextMenu} />
 
 {#if isLoginPage}
 	<slot />
@@ -73,40 +123,39 @@
 				</a>
 			</div>
 
-			<!-- Project Selector -->
-			<div class="p-2 border-b border-border">
-				<div class="relative">
+			<!-- Projects List -->
+			<div class="flex-1 flex flex-col min-h-0 border-b border-border">
+				<div class="px-3 py-2 flex items-center justify-between">
+					<span class="text-xs font-medium text-zinc-500 uppercase tracking-wider">Projects</span>
 					<button
-						on:click={() => showProjectDropdown = !showProjectDropdown}
-						class="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm text-zinc-100 bg-surface-2 hover:bg-surface-3 transition-colors"
+						on:click={() => showArchived = !showArchived}
+						class="text-xs px-2 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-surface-3 transition-colors"
+						title={showArchived ? 'Show active projects' : 'Show archived projects'}
 					>
-						<span class="truncate">{$currentProject?.name || 'Select project'}</span>
-						<svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-						</svg>
+						{showArchived ? 'Archived' : 'Active'} ({showArchived ? archivedProjects.length : activeProjects.length})
 					</button>
-
-					{#if showProjectDropdown}
-						<div class="absolute top-full left-0 right-0 mt-1 bg-surface-2 border border-border rounded-md shadow-lg z-50 max-h-64 overflow-auto">
-							{#each projects as project (project.id)}
-								<button
-									on:click={() => selectProject(project)}
-									class="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-surface-3 transition-colors"
-									class:bg-surface-3={$currentProject?.id === project.id}
-								>
-									{project.name}
-								</button>
-							{/each}
-							{#if projects.length === 0}
-								<div class="px-3 py-2 text-sm text-zinc-500">No projects</div>
-							{/if}
+				</div>
+				<div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+					{#each displayedProjects as project (project.id)}
+						<button
+							on:click={() => selectProject(project)}
+							on:contextmenu={(e) => handleContextMenu(e, project)}
+							class="w-full text-left px-2 py-1.5 rounded text-sm truncate transition-colors {$currentProject?.id === project.id ? 'bg-surface-3 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-surface-2'}"
+							title="{project.name} (right-click for options)"
+						>
+							{project.name}
+						</button>
+					{/each}
+					{#if displayedProjects.length === 0}
+						<div class="px-2 py-4 text-sm text-zinc-600 text-center">
+							{showArchived ? 'No archived projects' : 'No active projects'}
 						</div>
 					{/if}
 				</div>
 			</div>
 
 			<!-- Navigation -->
-			<nav class="flex-1 p-2 space-y-1">
+			<nav class="p-2 space-y-1">
 				<a href="/board" class="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-surface-3 transition-colors" class:bg-surface-3={$page.url.pathname === '/board'} class:text-zinc-100={$page.url.pathname === '/board'}>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
@@ -159,5 +208,30 @@
 		<main class="flex-1 overflow-hidden">
 			<slot />
 		</main>
+
+		<!-- Context Menu -->
+		{#if contextMenuProject}
+			<div
+				class="fixed bg-surface-2 border border-border rounded-md shadow-lg py-1 z-50"
+				style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px;"
+			>
+				<button
+					on:click={() => contextMenuProject && toggleArchive(contextMenuProject)}
+					class="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-surface-3 transition-colors flex items-center gap-2"
+				>
+					{#if isArchived(contextMenuProject)}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+						</svg>
+						Unarchive
+					{:else}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+						</svg>
+						Archive
+					{/if}
+				</button>
+			</div>
+		{/if}
 	</div>
 {/if}

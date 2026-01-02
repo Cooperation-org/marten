@@ -16,3 +16,11 @@ export async function getProjectBySlug(slug: string): Promise<Project> {
 	}
 	return projects[0];
 }
+
+export async function updateProjectTags(projectId: number, tags: [string, string | null][]): Promise<Project> {
+	return api.patch<Project>(`/projects/${projectId}`, { tags });
+}
+
+export function isArchived(project: Project): boolean {
+	return project.tags?.some(([tag]) => tag.toLowerCase() === 'archived') ?? false;
+}

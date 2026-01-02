@@ -28,6 +28,8 @@ export interface Project {
 	us_statuses: UserStoryStatus[];
 	task_statuses: TaskStatus[];
 	points: Point[];
+	tags: [string, string | null][];
+	tags_colors: Record<string, string>;
 }
 
 export interface UserStoryStatus {
