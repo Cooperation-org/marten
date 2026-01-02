@@ -1,6 +1,13 @@
 import { api } from './client';
 import type { Project } from './types';
 
+export interface CreateProjectData {
+	name: string;
+	description: string;
+	creation_template?: number;
+	is_private?: boolean;
+}
+
 export async function getProjects(): Promise<Project[]> {
 	return api.get<Project[]>('/projects');
 }
@@ -15,6 +22,15 @@ export async function getProjectBySlug(slug: string): Promise<Project> {
 		throw new Error(`Project not found: ${slug}`);
 	}
 	return projects[0];
+}
+
+export async function createProject(data: CreateProjectData): Promise<Project> {
+	return api.post<Project>('/projects', {
+		name: data.name,
+		description: data.description || '',
+		creation_template: data.creation_template || 2, // Default to Kanban
+		is_private: data.is_private ?? false
+	});
 }
 
 export async function updateProject(projectId: number, data: Partial<Project>): Promise<Project> {

@@ -5,13 +5,19 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { currentProject } from '$lib/stores/project';
-	import { getProjects, archiveProject, unarchiveProject, isArchived } from '$lib/api/projects';
+	import { getProjects, archiveProject, unarchiveProject, isArchived, createProject } from '$lib/api/projects';
 	import type { Project } from '$lib/api/types';
 
 	let projects: Project[] = [];
 	let showArchived = false;
 	let contextMenuProject: Project | null = null;
 	let contextMenuPos = { x: 0, y: 0 };
+
+	// Create project modal state
+	let showCreateModal = false;
+	let newProjectName = '';
+	let newProjectDesc = '';
+	let isCreating = false;
 
 	onMount(() => {
 		auth.init();
@@ -103,11 +109,55 @@
 		}
 	}
 
+	function openCreateModal() {
+		newProjectName = '';
+		newProjectDesc = '';
+		showCreateModal = true;
+	}
+
+	function closeCreateModal() {
+		showCreateModal = false;
+		newProjectName = '';
+		newProjectDesc = '';
+	}
+
+	async function handleCreateProject() {
+		if (!newProjectName.trim() || isCreating) return;
+
+		isCreating = true;
+		try {
+			const newProject = await createProject({
+				name: newProjectName.trim(),
+				description: newProjectDesc.trim(),
+				is_private: false
+			});
+
+			// Add to list and select it
+			projects = [newProject, ...projects];
+			currentProject.set(newProject);
+			closeCreateModal();
+			goto('/board');
+		} catch (err) {
+			console.error('Failed to create project:', err);
+			alert('Failed to create project: ' + (err as Error).message);
+		} finally {
+			isCreating = false;
+		}
+	}
+
+	function handleCreateKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && e.metaKey) {
+			handleCreateProject();
+		} else if (e.key === 'Escape') {
+			closeCreateModal();
+		}
+	}
+
 	// Check if current route is login
 	$: isLoginPage = $page.url.pathname.startsWith('/login');
 </script>
 
-<svelte:window on:click={closeContextMenu} />
+<svelte:window on:click={closeContextMenu} on:keydown={showCreateModal ? handleCreateKeydown : undefined} />
 
 {#if isLoginPage}
 	<slot />
@@ -130,7 +180,18 @@
 			<!-- Projects List -->
 			<div class="flex-1 flex flex-col min-h-0 border-b border-border">
 				<div class="px-3 py-2 flex items-center justify-between">
-					<span class="text-xs font-medium text-zinc-500 uppercase tracking-wider">Projects</span>
+					<div class="flex items-center gap-2">
+						<span class="text-xs font-medium text-zinc-500 uppercase tracking-wider">Projects</span>
+						<button
+							on:click={openCreateModal}
+							class="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-surface-3 transition-colors"
+							title="New project"
+						>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+							</svg>
+						</button>
+					</div>
 					<button
 						on:click={() => showArchived = !showArchived}
 						class="text-xs px-2 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-surface-3 transition-colors"
@@ -235,6 +296,61 @@
 						Archive
 					{/if}
 				</button>
+			</div>
+		{/if}
+
+		<!-- Create Project Modal -->
+		{#if showCreateModal}
+			<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={closeCreateModal}>
+				<div
+					class="bg-surface-1 border border-border rounded-lg shadow-xl w-full max-w-md mx-4"
+					on:click|stopPropagation
+				>
+					<div class="p-4 border-b border-border">
+						<h2 class="text-lg font-semibold text-zinc-100">New Project</h2>
+					</div>
+					<div class="p-4 space-y-4">
+						<div>
+							<label for="project-name" class="block text-sm font-medium text-zinc-400 mb-1">Name</label>
+							<input
+								id="project-name"
+								type="text"
+								bind:value={newProjectName}
+								placeholder="Project name"
+								class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan focus:border-transparent"
+								autofocus
+							/>
+						</div>
+						<div>
+							<label for="project-desc" class="block text-sm font-medium text-zinc-400 mb-1">Description</label>
+							<textarea
+								id="project-desc"
+								bind:value={newProjectDesc}
+								placeholder="Brief description (optional)"
+								rows="3"
+								class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan focus:border-transparent resize-none"
+							></textarea>
+						</div>
+					</div>
+					<div class="p-4 border-t border-border flex justify-end gap-2">
+						<button
+							on:click={closeCreateModal}
+							class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+						>
+							Cancel
+						</button>
+						<button
+							on:click={handleCreateProject}
+							disabled={!newProjectName.trim() || isCreating}
+							class="px-4 py-2 text-sm bg-lt-cyan text-zinc-900 font-medium rounded-md hover:bg-lt-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{isCreating ? 'Creating...' : 'Create'}
+						</button>
+					</div>
+					<div class="px-4 pb-3">
+						<p class="text-xs text-zinc-600 text-center">Press <kbd class="px-1 py-0.5 bg-surface-2 rounded text-zinc-500">Cmd+Enter</kbd> to create</p>
+					</div>
+				</div>
 			</div>
 		{/if}
 	</div>
