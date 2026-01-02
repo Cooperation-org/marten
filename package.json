@@ -1,0 +1,38 @@
+{
+  "name": "taiga-front-next",
+  "version": "0.1.0",
+  "description": "Modern Svelte frontend for Taiga - LinkedTrust edition",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "keywords": [
+    "taiga",
+    "project-management",
+    "svelte",
+    "linkedtrust"
+  ],
+  "author": "LinkedTrust",
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^7.0.0",
+    "@sveltejs/kit": "^2.49.2",
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@tanstack/svelte-query": "^6.0.14",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "svelte": "^5.46.1",
+    "svelte-check": "^4.3.5",
+    "svelte-dnd-action": "^0.9.69",
+    "tailwindcss": "^4.1.18",
+    "tinykeys": "^3.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.1.18"
+  }
+}

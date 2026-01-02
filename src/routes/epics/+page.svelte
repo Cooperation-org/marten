@@ -1,0 +1,150 @@
+<script lang="ts">
+	import { currentProject } from '$lib/stores/project';
+	import { getEpics } from '$lib/api/epics';
+	import type { Epic } from '$lib/api/types';
+
+	let epics: Epic[] = [];
+	let isLoading = true;
+	let error = '';
+
+	// Reload when project changes
+	$: if ($currentProject) {
+		loadData($currentProject.id);
+	}
+
+	async function loadData(projectId: number) {
+		isLoading = true;
+		error = '';
+		try {
+			epics = await getEpics(projectId);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to load epics';
+			console.error('Failed to load epics:', err);
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	function getInitials(name: string): string {
+		return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+	}
+
+	function getProgress(epic: Epic): number {
+		const counts = epic.user_stories_counts;
+		if (!counts || counts.total === 0) return 0;
+		return Math.round((counts.progress / counts.total) * 100);
+	}
+</script>
+
+<svelte:head>
+	<title>Epics - TaigaLT</title>
+</svelte:head>
+
+<div class="h-full flex flex-col">
+	<!-- Header -->
+	<header class="flex items-center justify-between px-6 py-4 border-b border-border">
+		<div>
+			<h1 class="text-lg font-semibold text-zinc-100">{$currentProject?.name || 'Select a project'}</h1>
+			<p class="text-sm text-zinc-500">Epics · {epics.length} total</p>
+		</div>
+		<div class="flex items-center gap-2">
+			<button class="btn btn-ghost">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+				</svg>
+				Filter
+			</button>
+			<button class="btn btn-primary">
+				<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+				</svg>
+				New Epic
+			</button>
+		</div>
+	</header>
+
+	<!-- Epics Grid -->
+	<div class="flex-1 overflow-auto p-6">
+		{#if isLoading}
+			<div class="flex items-center justify-center h-full">
+				<div class="text-zinc-500">Loading epics...</div>
+			</div>
+		{:else if error}
+			<div class="flex items-center justify-center h-full">
+				<div class="text-red-400">{error}</div>
+			</div>
+		{:else if !$currentProject}
+			<div class="flex items-center justify-center h-full">
+				<div class="text-zinc-500">Select a project to view epics</div>
+			</div>
+		{:else if epics.length === 0}
+			<div class="flex items-center justify-center h-full">
+				<div class="text-zinc-500">No epics yet</div>
+			</div>
+		{:else}
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+				{#each epics as epic (epic.id)}
+					<div class="bg-surface-2 rounded-lg border border-border hover:border-zinc-600 transition-colors cursor-pointer group">
+						<!-- Epic header with color bar -->
+						<div class="h-1 rounded-t-lg" style="background-color: {epic.color}"></div>
+
+						<div class="p-4">
+							<!-- Ref and status -->
+							<div class="flex items-center justify-between mb-2">
+								<span class="text-zinc-500 text-sm">#{epic.ref}</span>
+								<span
+									class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full"
+									style="background-color: {epic.status_extra_info.color}20; color: {epic.status_extra_info.color}"
+								>
+									{epic.status_extra_info.name}
+								</span>
+							</div>
+
+							<!-- Title -->
+							<h3 class="text-zinc-100 font-medium mb-1 group-hover:text-lt-cyan transition-colors">
+								{epic.subject}
+							</h3>
+							{#if epic.description}
+								<p class="text-zinc-500 text-sm mb-4 line-clamp-2">{epic.description}</p>
+							{:else}
+								<p class="text-zinc-600 text-sm mb-4 italic">No description</p>
+							{/if}
+
+							<!-- Progress bar -->
+							<div class="mb-3">
+								<div class="flex items-center justify-between text-xs mb-1">
+									<span class="text-zinc-500">Progress</span>
+									<span class="text-zinc-400">{getProgress(epic)}%</span>
+								</div>
+								<div class="h-1.5 bg-surface-3 rounded-full overflow-hidden">
+									<div
+										class="h-full rounded-full transition-all duration-300"
+										style="width: {getProgress(epic)}%; background-color: {epic.color}"
+									></div>
+								</div>
+							</div>
+
+							<!-- Stats -->
+							<div class="flex items-center justify-between text-sm">
+								<div class="flex items-center gap-3">
+									<span class="text-zinc-500">
+										<span class="text-zinc-300">{epic.user_stories_counts?.progress || 0}</span>/{epic.user_stories_counts?.total || 0} stories
+									</span>
+								</div>
+								{#if epic.assigned_to_extra_info}
+									<div
+										class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white"
+										style="background-color: {epic.assigned_to_extra_info.color}"
+										title={epic.assigned_to_extra_info.full_name}
+									>
+										{getInitials(epic.assigned_to_extra_info.full_name)}
+									</div>
+								{/if}
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</div>
+</div>
