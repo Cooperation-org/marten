@@ -17,10 +17,37 @@ export async function getProjectBySlug(slug: string): Promise<Project> {
 	return projects[0];
 }
 
-export async function updateProjectTags(projectId: number, tags: [string, string | null][]): Promise<Project> {
-	return api.patch<Project>(`/projects/${projectId}`, { tags });
+export async function updateProject(projectId: number, data: Partial<Project>): Promise<Project> {
+	return api.patch<Project>(`/projects/${projectId}`, data);
+}
+
+export async function addProjectTag(projectId: number, tag: string, color?: string): Promise<void> {
+	await api.post(`/projects/${projectId}/create_tag`, { tag, color: color || null });
+}
+
+export async function deleteProjectTag(projectId: number, tag: string): Promise<void> {
+	await api.post(`/projects/${projectId}/delete_tag`, { tag });
 }
 
 export function isArchived(project: Project): boolean {
-	return project.tags?.some(([tag]) => tag.toLowerCase() === 'archived') ?? false;
+	return project.tags?.some(tag => tag.toLowerCase() === 'archived') ?? false;
+}
+
+export async function archiveProject(project: Project): Promise<Project> {
+	// First ensure the archived tag exists in tags_colors
+	if (!project.tags_colors?.archived) {
+		await addProjectTag(project.id, 'archived', '#888888');
+	}
+	// Add archived to project tags
+	const newTags = [...(project.tags || [])];
+	if (!newTags.some(t => t.toLowerCase() === 'archived')) {
+		newTags.push('archived');
+	}
+	return updateProject(project.id, { tags: newTags });
+}
+
+export async function unarchiveProject(project: Project): Promise<Project> {
+	// Remove archived from project tags
+	const newTags = (project.tags || []).filter(t => t.toLowerCase() !== 'archived');
+	return updateProject(project.id, { tags: newTags });
 }

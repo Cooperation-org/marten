@@ -5,7 +5,7 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { currentProject } from '$lib/stores/project';
-	import { getProjects, updateProjectTags, isArchived } from '$lib/api/projects';
+	import { getProjects, archiveProject, unarchiveProject, isArchived } from '$lib/api/projects';
 	import type { Project } from '$lib/api/types';
 
 	let projects: Project[] = [];
@@ -70,22 +70,18 @@
 
 	async function toggleArchive(project: Project) {
 		const archived = isArchived(project);
-		let newTags: [string, string | null][];
-
-		if (archived) {
-			// Remove archived tag
-			newTags = (project.tags || []).filter(([tag]) => tag.toLowerCase() !== 'archived');
-		} else {
-			// Add archived tag
-			newTags = [...(project.tags || []), ['archived', null]];
-		}
 
 		try {
-			const updated = await updateProjectTags(project.id, newTags);
-			// Update local state
-			projects = projects.map(p => p.id === updated.id ? updated : p);
+			if (archived) {
+				await unarchiveProject(project);
+			} else {
+				await archiveProject(project);
+			}
 
-			// If we archived the current project, switch to another
+			// Reload projects to get fresh data
+			projects = await getProjects();
+
+			// If we archived the current project, switch to another active one
 			if (!archived && $currentProject?.id === project.id) {
 				const active = projects.filter(p => !isArchived(p));
 				if (active.length > 0) {
@@ -94,6 +90,7 @@
 			}
 		} catch (err) {
 			console.error('Failed to update project:', err);
+			alert('Failed to archive/unarchive project: ' + (err as Error).message);
 		}
 
 		closeContextMenu();

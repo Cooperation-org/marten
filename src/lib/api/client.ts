@@ -70,7 +70,13 @@ class TaigaClient {
 			return undefined as T;
 		}
 
-		return response.json();
+		// Handle empty responses
+		const text = await response.text();
+		if (!text) {
+			return undefined as T;
+		}
+
+		return JSON.parse(text);
 	}
 
 	get<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>) {
