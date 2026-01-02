@@ -34,9 +34,13 @@ export function isArchived(project: Project): boolean {
 }
 
 export async function archiveProject(project: Project): Promise<Project> {
-	// First ensure the archived tag exists in tags_colors
+	// First ensure the archived tag exists in tags_colors (ignore error if already exists)
 	if (!project.tags_colors?.archived) {
-		await addProjectTag(project.id, 'archived', '#888888');
+		try {
+			await addProjectTag(project.id, 'archived', '#888888');
+		} catch {
+			// Tag may already exist in tags_colors, that's fine
+		}
 	}
 	// Add archived to project tags
 	const newTags = [...(project.tags || [])];

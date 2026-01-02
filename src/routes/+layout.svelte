@@ -70,30 +70,37 @@
 
 	async function toggleArchive(project: Project) {
 		const archived = isArchived(project);
+		closeContextMenu();
 
+		// Optimistic update - update UI immediately
+		const updatedTags = archived
+			? (project.tags || []).filter(t => t.toLowerCase() !== 'archived')
+			: [...(project.tags || []), 'archived'];
+
+		projects = projects.map(p =>
+			p.id === project.id ? { ...p, tags: updatedTags } : p
+		);
+
+		// If we archived the current project, switch to another active one
+		if (!archived && $currentProject?.id === project.id) {
+			const active = projects.filter(p => !isArchived(p));
+			if (active.length > 0) {
+				currentProject.set(active[0]);
+			}
+		}
+
+		// Sync with server in background
 		try {
 			if (archived) {
 				await unarchiveProject(project);
 			} else {
 				await archiveProject(project);
 			}
-
-			// Reload projects to get fresh data
-			projects = await getProjects();
-
-			// If we archived the current project, switch to another active one
-			if (!archived && $currentProject?.id === project.id) {
-				const active = projects.filter(p => !isArchived(p));
-				if (active.length > 0) {
-					currentProject.set(active[0]);
-				}
-			}
 		} catch (err) {
+			// Revert on error
 			console.error('Failed to update project:', err);
-			alert('Failed to archive/unarchive project: ' + (err as Error).message);
+			projects = await getProjects();
 		}
-
-		closeContextMenu();
 	}
 
 	// Check if current route is login
