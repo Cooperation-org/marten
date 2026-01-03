@@ -1,11 +1,20 @@
 <script lang="ts">
 	import { currentProject } from '$lib/stores/project';
-	import { getUserStories } from '$lib/api/userstories';
-	import type { UserStory } from '$lib/api/types';
+	import { getUserStories, getUserStoryStatuses } from '$lib/api/userstories';
+	import { api } from '$lib/api';
+	import CreateStoryModal from '$lib/components/CreateStoryModal.svelte';
+	import IssueModal from '$lib/components/IssueModal.svelte';
+	import type { UserStory, UserStoryStatus, User } from '$lib/api/types';
 
 	let stories: UserStory[] = [];
+	let statuses: UserStoryStatus[] = [];
+	let projectMembers: User[] = [];
 	let isLoading = true;
 	let error = '';
+
+	// Modal state
+	let showCreateModal = false;
+	let selectedStory: UserStory | null = null;
 
 	// Reload when project changes
 	$: if ($currentProject) {
@@ -16,7 +25,11 @@
 		isLoading = true;
 		error = '';
 		try {
-			stories = await getUserStories(projectId);
+			[stories, statuses, projectMembers] = await Promise.all([
+				getUserStories(projectId),
+				getUserStoryStatuses(projectId),
+				api.get<User[]>('/users', { project: projectId })
+			]);
 			// Sort by backlog order
 			stories = stories.sort((a, b) => a.backlog_order - b.backlog_order);
 		} catch (err) {
@@ -25,6 +38,21 @@
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	function handleStoryCreated(e: CustomEvent<UserStory>) {
+		stories = [...stories, e.detail].sort((a, b) => a.backlog_order - b.backlog_order);
+		showCreateModal = false;
+	}
+
+	function handleStoryUpdate(e: CustomEvent<UserStory>) {
+		stories = stories.map(s => s.id === e.detail.id ? e.detail : s);
+		selectedStory = e.detail;
+	}
+
+	function handleStoryDelete(e: CustomEvent<number>) {
+		stories = stories.filter(s => s.id !== e.detail);
+		selectedStory = null;
 	}
 
 	// Calculate totals
@@ -49,13 +77,7 @@
 			<p class="text-sm text-zinc-500">Backlog · {openStories.length} stories · {openPoints} points</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<button class="btn btn-ghost">
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-				</svg>
-				Filter
-			</button>
-			<button class="btn btn-primary">
+			<button class="btn btn-primary" on:click={() => showCreateModal = true}>
 				<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 				</svg>
@@ -95,7 +117,7 @@
 				</thead>
 				<tbody class="divide-y divide-border">
 					{#each stories as story (story.id)}
-						<tr class="hover:bg-surface-2 transition-colors cursor-pointer group">
+						<tr class="hover:bg-surface-2 transition-colors cursor-pointer group" on:click={() => selectedStory = story}>
 							<td class="px-6 py-3">
 								<span class="text-zinc-500 text-sm">#{story.ref}</span>
 							</td>
@@ -168,3 +190,25 @@
 		</footer>
 	{/if}
 </div>
+
+<!-- Create Story Modal -->
+{#if showCreateModal && $currentProject}
+	<CreateStoryModal
+		projectId={$currentProject.id}
+		{statuses}
+		on:close={() => showCreateModal = false}
+		on:created={handleStoryCreated}
+	/>
+{/if}
+
+<!-- Issue Modal -->
+{#if selectedStory}
+	<IssueModal
+		story={selectedStory}
+		{statuses}
+		{projectMembers}
+		on:close={() => selectedStory = null}
+		on:update={handleStoryUpdate}
+		on:delete={handleStoryDelete}
+	/>
+{/if}

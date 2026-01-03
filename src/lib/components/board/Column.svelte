@@ -10,7 +10,17 @@
 
 	const dispatch = createEventDispatcher<{
 		drop: { storyId: number; newStatusId: number };
+		select: UserStory;
+		add: number;
 	}>();
+
+	function handleCardClick(story: UserStory) {
+		dispatch('select', story);
+	}
+
+	function handleAddClick() {
+		dispatch('add', status.id);
+	}
 
 	const flipDurationMs = 150;
 
@@ -58,14 +68,17 @@
 		on:finalize={handleDndFinalize}
 	>
 		{#each stories as story (story.id)}
-			<div animate:flip={{ duration: flipDurationMs }}>
+			<div animate:flip={{ duration: flipDurationMs }} on:click={() => handleCardClick(story)}>
 				<Card {story} />
 			</div>
 		{/each}
 	</div>
 
 	<!-- Add card button -->
-	<button class="w-full mt-2 p-2 text-sm text-zinc-500 hover:text-zinc-300 hover:bg-surface-3 rounded-md transition-colors flex items-center justify-center gap-1">
+	<button
+		on:click={handleAddClick}
+		class="w-full mt-2 p-2 text-sm text-zinc-500 hover:text-zinc-300 hover:bg-surface-3 rounded-md transition-colors flex items-center justify-center gap-1"
+	>
 		<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 		</svg>

@@ -71,3 +71,7 @@ export async function unarchiveProject(project: Project): Promise<Project> {
 	const newTags = (project.tags || []).filter(t => t.toLowerCase() !== 'archived');
 	return updateProject(project.id, { tags: newTags });
 }
+
+export async function deleteProject(projectId: number): Promise<void> {
+	await api.delete(`/projects/${projectId}`);
+}

@@ -5,7 +5,7 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { currentProject } from '$lib/stores/project';
-	import { getProjects, archiveProject, unarchiveProject, isArchived, createProject } from '$lib/api/projects';
+	import { getProjects, archiveProject, unarchiveProject, isArchived, createProject, updateProject, deleteProject } from '$lib/api/projects';
 	import type { Project } from '$lib/api/types';
 
 	let projects: Project[] = [];
@@ -18,6 +18,18 @@
 	let newProjectName = '';
 	let newProjectDesc = '';
 	let isCreating = false;
+
+	// Edit project modal state
+	let showEditModal = false;
+	let editingProject: Project | null = null;
+	let editProjectName = '';
+	let editProjectDesc = '';
+	let isEditing = false;
+
+	// Delete confirmation state
+	let showDeleteConfirm = false;
+	let deletingProject: Project | null = null;
+	let isDeleting = false;
 
 	onMount(() => {
 		auth.init();
@@ -40,7 +52,11 @@
 
 	async function loadProjects() {
 		try {
-			projects = await getProjects();
+			const loaded = await getProjects();
+			// Sort by most recently modified
+			projects = loaded.sort((a, b) =>
+				new Date(b.modified_date).getTime() - new Date(a.modified_date).getTime()
+			);
 			// Auto-select first active project if none selected
 			const active = projects.filter(p => !isArchived(p));
 			if (active.length > 0 && !$currentProject) {
@@ -125,23 +141,52 @@
 		if (!newProjectName.trim() || isCreating) return;
 
 		isCreating = true;
-		try {
-			const newProject = await createProject({
-				name: newProjectName.trim(),
-				description: newProjectDesc.trim(),
-				is_private: false
-			});
+		const name = newProjectName.trim();
+		const description = newProjectDesc.trim();
 
-			// Add to list and select it
-			projects = [newProject, ...projects];
+		// Optimistic: create temp project and close modal immediately
+		const tempId = -Date.now();
+		const tempProject: Project = {
+			id: tempId,
+			name,
+			description,
+			slug: name.toLowerCase().replace(/\s+/g, '-'),
+			created_date: new Date().toISOString(),
+			modified_date: new Date().toISOString(),
+			owner: $auth.user as any,
+			members: [],
+			is_private: false,
+			total_milestones: 0,
+			total_story_points: 0,
+			is_kanban_activated: true,
+			is_backlog_activated: true,
+			us_statuses: [],
+			task_statuses: [],
+			points: [],
+			tags: [],
+			tags_colors: {}
+		};
+
+		projects = [tempProject, ...projects];
+		closeCreateModal();
+		isCreating = false;
+
+		// Create in background, update with real data
+		try {
+			const newProject = await createProject({ name, description, is_private: false });
+			projects = projects.map(p => p.id === tempId ? newProject : p);
+			// Now safe to select and navigate
 			currentProject.set(newProject);
-			closeCreateModal();
 			goto('/board');
 		} catch (err) {
 			console.error('Failed to create project:', err);
+			// Remove temp project on error
+			projects = projects.filter(p => p.id !== tempId);
+			if ($currentProject?.id === tempId) {
+				const active = projects.filter(p => !isArchived(p));
+				currentProject.set(active.length > 0 ? active[0] : null);
+			}
 			alert('Failed to create project: ' + (err as Error).message);
-		} finally {
-			isCreating = false;
 		}
 	}
 
@@ -153,11 +198,101 @@
 		}
 	}
 
+	// Edit project functions
+	function openEditModal(project: Project) {
+		editingProject = project;
+		editProjectName = project.name;
+		editProjectDesc = project.description || '';
+		showEditModal = true;
+		closeContextMenu();
+	}
+
+	function closeEditModal() {
+		showEditModal = false;
+		editingProject = null;
+		editProjectName = '';
+		editProjectDesc = '';
+	}
+
+	async function handleEditProject() {
+		if (!editingProject || !editProjectName.trim() || isEditing) return;
+
+		isEditing = true;
+		try {
+			const updated = await updateProject(editingProject.id, {
+				name: editProjectName.trim(),
+				description: editProjectDesc.trim()
+			});
+
+			// Update in list
+			projects = projects.map(p => p.id === updated.id ? updated : p);
+
+			// Update current project if it's the one being edited
+			if ($currentProject?.id === updated.id) {
+				currentProject.set(updated);
+			}
+
+			closeEditModal();
+		} catch (err) {
+			console.error('Failed to update project:', err);
+			alert('Failed to update project: ' + (err as Error).message);
+		} finally {
+			isEditing = false;
+		}
+	}
+
+	function handleEditKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && e.metaKey) {
+			handleEditProject();
+		} else if (e.key === 'Escape') {
+			closeEditModal();
+		}
+	}
+
+	// Delete project functions
+	function openDeleteConfirm(project: Project) {
+		deletingProject = project;
+		showDeleteConfirm = true;
+		closeContextMenu();
+	}
+
+	function closeDeleteConfirm() {
+		showDeleteConfirm = false;
+		deletingProject = null;
+	}
+
+	async function handleDeleteProject() {
+		if (!deletingProject || isDeleting) return;
+
+		isDeleting = true;
+		const projectId = deletingProject.id;
+
+		try {
+			await deleteProject(projectId);
+
+			// Remove from list
+			projects = projects.filter(p => p.id !== projectId);
+
+			// If deleted project was selected, switch to another
+			if ($currentProject?.id === projectId) {
+				const active = projects.filter(p => !isArchived(p));
+				currentProject.set(active.length > 0 ? active[0] : null);
+			}
+
+			closeDeleteConfirm();
+		} catch (err) {
+			console.error('Failed to delete project:', err);
+			alert('Failed to delete project: ' + (err as Error).message);
+		} finally {
+			isDeleting = false;
+		}
+	}
+
 	// Check if current route is login
 	$: isLoginPage = $page.url.pathname.startsWith('/login');
 </script>
 
-<svelte:window on:click={closeContextMenu} on:keydown={showCreateModal ? handleCreateKeydown : undefined} />
+<svelte:window on:click={closeContextMenu} on:keydown={showCreateModal ? handleCreateKeydown : showEditModal ? handleEditKeydown : undefined} />
 
 {#if isLoginPage}
 	<slot />
@@ -277,24 +412,36 @@
 		<!-- Context Menu -->
 		{#if contextMenuProject}
 			<div
-				class="fixed bg-surface-2 border border-border rounded-md shadow-lg py-1 z-50"
+				class="fixed bg-surface-2 border border-border rounded-md shadow-lg py-1 z-50 min-w-[140px]"
 				style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px;"
 			>
+				<button
+					on:click={() => contextMenuProject && openEditModal(contextMenuProject)}
+					class="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-surface-3 transition-colors flex items-center gap-2"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+					</svg>
+					Edit
+				</button>
 				<button
 					on:click={() => contextMenuProject && toggleArchive(contextMenuProject)}
 					class="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-surface-3 transition-colors flex items-center gap-2"
 				>
-					{#if isArchived(contextMenuProject)}
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-						</svg>
-						Unarchive
-					{:else}
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-						</svg>
-						Archive
-					{/if}
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+					</svg>
+					{isArchived(contextMenuProject) ? 'Unarchive' : 'Archive'}
+				</button>
+				<div class="border-t border-border my-1"></div>
+				<button
+					on:click={() => contextMenuProject && openDeleteConfirm(contextMenuProject)}
+					class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-surface-3 transition-colors flex items-center gap-2"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+					</svg>
+					Delete
 				</button>
 			</div>
 		{/if}
@@ -349,6 +496,96 @@
 					</div>
 					<div class="px-4 pb-3">
 						<p class="text-xs text-zinc-600 text-center">Press <kbd class="px-1 py-0.5 bg-surface-2 rounded text-zinc-500">Cmd+Enter</kbd> to create</p>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Edit Project Modal -->
+		{#if showEditModal && editingProject}
+			<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={closeEditModal}>
+				<div
+					class="bg-surface-1 border border-border rounded-lg shadow-xl w-full max-w-md mx-4"
+					on:click|stopPropagation
+				>
+					<div class="p-4 border-b border-border">
+						<h2 class="text-lg font-semibold text-zinc-100">Edit Project</h2>
+					</div>
+					<div class="p-4 space-y-4">
+						<div>
+							<label for="edit-project-name" class="block text-sm font-medium text-zinc-400 mb-1">Name</label>
+							<input
+								id="edit-project-name"
+								type="text"
+								bind:value={editProjectName}
+								placeholder="Project name"
+								class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan focus:border-transparent"
+								autofocus
+							/>
+						</div>
+						<div>
+							<label for="edit-project-desc" class="block text-sm font-medium text-zinc-400 mb-1">Description</label>
+							<textarea
+								id="edit-project-desc"
+								bind:value={editProjectDesc}
+								placeholder="Brief description (optional)"
+								rows="3"
+								class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan focus:border-transparent resize-none"
+							></textarea>
+						</div>
+					</div>
+					<div class="p-4 border-t border-border flex justify-end gap-2">
+						<button
+							on:click={closeEditModal}
+							class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+						>
+							Cancel
+						</button>
+						<button
+							on:click={handleEditProject}
+							disabled={!editProjectName.trim() || isEditing}
+							class="px-4 py-2 text-sm bg-lt-cyan text-zinc-900 font-medium rounded-md hover:bg-lt-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{isEditing ? 'Saving...' : 'Save'}
+						</button>
+					</div>
+					<div class="px-4 pb-3">
+						<p class="text-xs text-zinc-600 text-center">Press <kbd class="px-1 py-0.5 bg-surface-2 rounded text-zinc-500">Cmd+Enter</kbd> to save</p>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Delete Confirmation Modal -->
+		{#if showDeleteConfirm && deletingProject}
+			<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={closeDeleteConfirm}>
+				<div
+					class="bg-surface-1 border border-border rounded-lg shadow-xl w-full max-w-sm mx-4"
+					on:click|stopPropagation
+				>
+					<div class="p-4 border-b border-border">
+						<h2 class="text-lg font-semibold text-zinc-100">Delete Project</h2>
+					</div>
+					<div class="p-4">
+						<p class="text-zinc-300">
+							Are you sure you want to delete <strong class="text-zinc-100">{deletingProject.name}</strong>?
+						</p>
+						<p class="text-sm text-zinc-500 mt-2">This action cannot be undone. All issues in this project will be permanently deleted.</p>
+					</div>
+					<div class="p-4 border-t border-border flex justify-end gap-2">
+						<button
+							on:click={closeDeleteConfirm}
+							class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+						>
+							Cancel
+						</button>
+						<button
+							on:click={handleDeleteProject}
+							disabled={isDeleting}
+							class="px-4 py-2 text-sm bg-red-600 text-white font-medium rounded-md hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{isDeleting ? 'Deleting...' : 'Delete'}
+						</button>
 					</div>
 				</div>
 			</div>

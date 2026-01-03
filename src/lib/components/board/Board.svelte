@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { createEventDispatcher } from 'svelte';
 	import type { UserStory, UserStoryStatus } from '$lib/api/types';
 	import Column from './Column.svelte';
 	import { api } from '$lib/api';
@@ -6,6 +7,16 @@
 	export let statuses: UserStoryStatus[] = [];
 	export let stories: UserStory[] = [];
 	export let projectId: number;
+
+	const dispatch = createEventDispatcher<{ select: UserStory; addToColumn: number }>();
+
+	function handleSelect(e: CustomEvent<UserStory>) {
+		dispatch('select', e.detail);
+	}
+
+	function handleAddToColumn(e: CustomEvent<number>) {
+		dispatch('addToColumn', e.detail);
+	}
 
 	// Group stories by status
 	$: storiesByStatus = statuses.reduce((acc, status) => {
@@ -43,6 +54,8 @@
 			{status}
 			stories={storiesByStatus[status.id] || []}
 			on:drop={handleDrop}
+			on:select={handleSelect}
+			on:add={handleAddToColumn}
 		/>
 	{/each}
 </div>

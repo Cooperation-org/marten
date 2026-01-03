@@ -1,11 +1,18 @@
 <script lang="ts">
 	import { currentProject } from '$lib/stores/project';
-	import { getEpics } from '$lib/api/epics';
+	import { getEpics, updateEpic } from '$lib/api/epics';
+	import { api } from '$lib/api';
+	import CreateEpicModal from '$lib/components/CreateEpicModal.svelte';
+	import EpicModal from '$lib/components/EpicModal.svelte';
 	import type { Epic } from '$lib/api/types';
 
 	let epics: Epic[] = [];
 	let isLoading = true;
 	let error = '';
+
+	// Modal state
+	let showCreateModal = false;
+	let selectedEpic: Epic | null = null;
 
 	// Reload when project changes
 	$: if ($currentProject) {
@@ -23,6 +30,21 @@
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	function handleEpicCreated(e: CustomEvent<Epic>) {
+		epics = [...epics, e.detail];
+		showCreateModal = false;
+	}
+
+	function handleEpicUpdate(e: CustomEvent<Epic>) {
+		epics = epics.map(ep => ep.id === e.detail.id ? e.detail : ep);
+		selectedEpic = e.detail;
+	}
+
+	function handleEpicDelete(e: CustomEvent<number>) {
+		epics = epics.filter(ep => ep.id !== e.detail);
+		selectedEpic = null;
 	}
 
 	function getInitials(name: string): string {
@@ -48,13 +70,7 @@
 			<p class="text-sm text-zinc-500">Epics · {epics.length} total</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<button class="btn btn-ghost">
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-				</svg>
-				Filter
-			</button>
-			<button class="btn btn-primary">
+			<button class="btn btn-primary" on:click={() => showCreateModal = true}>
 				<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 				</svg>
@@ -84,7 +100,7 @@
 		{:else}
 			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 				{#each epics as epic (epic.id)}
-					<div class="bg-surface-2 rounded-lg border border-border hover:border-zinc-600 transition-colors cursor-pointer group">
+					<div class="bg-surface-2 rounded-lg border border-border hover:border-zinc-600 transition-colors cursor-pointer group" on:click={() => selectedEpic = epic}>
 						<!-- Epic header with color bar -->
 						<div class="h-1 rounded-t-lg" style="background-color: {epic.color}"></div>
 
@@ -148,3 +164,22 @@
 		{/if}
 	</div>
 </div>
+
+<!-- Create Epic Modal -->
+{#if showCreateModal && $currentProject}
+	<CreateEpicModal
+		projectId={$currentProject.id}
+		on:close={() => showCreateModal = false}
+		on:created={handleEpicCreated}
+	/>
+{/if}
+
+<!-- Epic Detail Modal -->
+{#if selectedEpic}
+	<EpicModal
+		epic={selectedEpic}
+		on:close={() => selectedEpic = null}
+		on:update={handleEpicUpdate}
+		on:delete={handleEpicDelete}
+	/>
+{/if}
