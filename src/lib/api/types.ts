@@ -174,4 +174,5 @@ export interface AuthResponse {
 	full_name: string;
 	email: string;
 	auth_token: string;
+	refresh: string;
 }

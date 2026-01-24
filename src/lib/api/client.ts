@@ -1,18 +1,22 @@
-// Taiga API client with auth handling
+// Taiga API client with auth handling and automatic token refresh
 
 // Use env variable in production, proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 interface RequestOptions extends RequestInit {
 	params?: Record<string, string | number | boolean | undefined>;
+	_isRetry?: boolean;
 }
 
 class TaigaClient {
 	private token: string | null = null;
+	private refreshToken: string | null = null;
+	private refreshPromise: Promise<boolean> | null = null;
 
 	constructor() {
 		if (typeof window !== 'undefined') {
 			this.token = localStorage.getItem('taiga_token');
+			this.refreshToken = localStorage.getItem('taiga_refresh_token');
 		}
 	}
 
@@ -23,15 +27,64 @@ class TaigaClient {
 		}
 	}
 
-	clearToken() {
-		this.token = null;
+	setRefreshToken(refreshToken: string) {
+		this.refreshToken = refreshToken;
 		if (typeof window !== 'undefined') {
-			localStorage.removeItem('taiga_token');
+			localStorage.setItem('taiga_refresh_token', refreshToken);
 		}
 	}
 
+	clearToken() {
+		this.token = null;
+		this.refreshToken = null;
+		if (typeof window !== 'undefined') {
+			localStorage.removeItem('taiga_token');
+			localStorage.removeItem('taiga_refresh_token');
+		}
+	}
+
+	private async tryRefreshToken(): Promise<boolean> {
+		// If already refreshing, wait for that to complete
+		if (this.refreshPromise) {
+			return this.refreshPromise;
+		}
+
+		if (!this.refreshToken) {
+			return false;
+		}
+
+		this.refreshPromise = (async () => {
+			try {
+				const response = await fetch(`${API_BASE}/auth/refresh`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ refresh: this.refreshToken })
+				});
+
+				if (!response.ok) {
+					this.clearToken();
+					return false;
+				}
+
+				const data = await response.json();
+				if (data.auth_token) {
+					this.setToken(data.auth_token);
+					return true;
+				}
+				return false;
+			} catch {
+				this.clearToken();
+				return false;
+			} finally {
+				this.refreshPromise = null;
+			}
+		})();
+
+		return this.refreshPromise;
+	}
+
 	private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-		const { params, ...fetchOptions } = options;
+		const { params, _isRetry, ...fetchOptions } = options;
 
 		let url = `${API_BASE}${endpoint}`;
 		if (params) {
@@ -60,6 +113,18 @@ class TaigaClient {
 			...fetchOptions,
 			headers
 		});
+
+		// Handle 401 - try to refresh token and retry once
+		if (response.status === 401 && !_isRetry && this.refreshToken) {
+			const refreshed = await this.tryRefreshToken();
+			if (refreshed) {
+				return this.request<T>(endpoint, { ...options, _isRetry: true });
+			}
+			// Refresh failed - redirect to login
+			if (typeof window !== 'undefined') {
+				window.location.href = '/login';
+			}
+		}
 
 		if (!response.ok) {
 			const error = await response.json().catch(() => ({ detail: 'Request failed' }));

@@ -45,6 +45,7 @@ function createAuthStore() {
 				});
 
 				api.setToken(response.auth_token);
+				api.setRefreshToken(response.refresh);
 				if (typeof window !== 'undefined') {
 					localStorage.setItem('taiga_user', JSON.stringify(response));
 				}

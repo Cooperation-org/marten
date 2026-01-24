@@ -21,19 +21,56 @@
 		if (!subject.trim() || isCreating) return;
 
 		isCreating = true;
+		const subjectText = subject.trim();
+		const descText = description.trim();
+		const statusId = status;
+
+		// Optimistic: create temp story and close immediately
+		const tempId = -Date.now();
+		const tempStory: UserStory = {
+			id: tempId,
+			ref: 0,
+			subject: subjectText,
+			description: descText,
+			status: statusId || statuses[0]?.id || 0,
+			status_extra_info: statuses.find(s => s.id === statusId)
+				? { name: statuses.find(s => s.id === statusId)!.name, color: statuses.find(s => s.id === statusId)!.color, is_closed: false }
+				: { name: 'New', color: '#999', is_closed: false },
+			assigned_to: null,
+			assigned_to_extra_info: null,
+			owner: 0,
+			owner_extra_info: {} as any,
+			project: projectId,
+			project_extra_info: { id: projectId, name: '', slug: '' },
+			milestone: null,
+			milestone_name: null,
+			milestone_slug: null,
+			is_closed: false,
+			total_points: null,
+			kanban_order: Date.now(),
+			backlog_order: Date.now(),
+			sprint_order: Date.now(),
+			created_date: new Date().toISOString(),
+			modified_date: new Date().toISOString(),
+			tags: [],
+			epics: null
+		};
+
+		dispatch('created', tempStory);
+
+		// Create in background
 		try {
 			const story = await createUserStory({
 				project: projectId,
-				subject: subject.trim(),
-				description: description.trim(),
-				status: status || undefined
+				subject: subjectText,
+				description: descText,
+				status: statusId || undefined
 			});
-			dispatch('created', story);
+			dispatch('updated', story, tempId);
 		} catch (err) {
 			console.error('Failed to create story:', err);
+			dispatch('error', tempId);
 			alert('Failed to create story: ' + (err as Error).message);
-		} finally {
-			isCreating = false;
 		}
 	}
 
