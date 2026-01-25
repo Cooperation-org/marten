@@ -12,6 +12,8 @@
 	let roles: Role[] = [];
 	let allUsers: { id: number; username: string; full_name: string; email: string }[] = [];
 	let isLoading = true;
+	let isLoadingUsers = false;
+	let usersLoaded = false;
 	let error = '';
 
 	// Add member state
@@ -39,10 +41,10 @@
 		isLoading = true;
 		error = '';
 		try {
-			[memberships, roles, allUsers] = await Promise.all([
+			// Only load memberships and roles initially - users loaded on demand
+			[memberships, roles] = await Promise.all([
 				getProjectMemberships(projectId),
-				getProjectRoles(projectId),
-				getAllUsers()
+				getProjectRoles(projectId)
 			]);
 			// Sort roles by order
 			roles = roles.sort((a, b) => a.order - b.order);
@@ -57,10 +59,23 @@
 		}
 	}
 
+	// Lazy load users when search input is focused
+	async function handleSearchFocus() {
+		if (usersLoaded || isLoadingUsers) return;
+		isLoadingUsers = true;
+		try {
+			allUsers = await getAllUsers();
+			usersLoaded = true;
+		} catch (err) {
+			console.error('Failed to load users:', err);
+		} finally {
+			isLoadingUsers = false;
+		}
+	}
+
 	function selectUser(user: { id: number; username: string; full_name: string }) {
 		selectedUser = user;
 		searchQuery = '';
-		searchResults = [];
 	}
 
 	async function handleAddMember() {
@@ -165,7 +180,8 @@
 					<input
 						type="text"
 						bind:value={searchQuery}
-						placeholder="Search by username or email..."
+						on:focus={handleSearchFocus}
+						placeholder={isLoadingUsers ? "Loading users..." : "Search by username or email..."}
 						class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan"
 					/>
 					{#if filteredUsers.length > 0}
