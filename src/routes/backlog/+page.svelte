@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { currentProject } from '$lib/stores/project';
 	import { getUserStories, getUserStoryStatuses } from '$lib/api/userstories';
-	import { api } from '$lib/api';
+	import { getProjectMemberships } from '$lib/api/memberships';
 	import CreateStoryModal from '$lib/components/CreateStoryModal.svelte';
 	import IssueModal from '$lib/components/IssueModal.svelte';
 	import type { UserStory, UserStoryStatus, User } from '$lib/api/types';
@@ -37,13 +37,22 @@
 		isLoading = true;
 		error = '';
 		try {
-			[stories, statuses, projectMembers] = await Promise.all([
+			const [storiesData, statusesData, membershipsData] = await Promise.all([
 				getUserStories(projectId),
 				getUserStoryStatuses(projectId),
-				api.get<User[]>('/users', { project: projectId })
+				getProjectMemberships(projectId)
 			]);
 			// Sort by backlog order
-			stories = stories.sort((a, b) => a.backlog_order - b.backlog_order);
+			stories = storiesData.sort((a, b) => a.backlog_order - b.backlog_order);
+			statuses = statusesData;
+			// Map memberships to User format for assignee dropdown
+			projectMembers = membershipsData.map(m => ({
+				id: m.user,
+				full_name: m.full_name,
+				username: m.email.split('@')[0],
+				photo: m.photo,
+				color: m.color
+			}));
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load backlog';
 			console.error('Failed to load backlog:', err);

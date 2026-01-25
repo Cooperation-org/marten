@@ -7,7 +7,7 @@
 	import CreateStoryModal from '$lib/components/CreateStoryModal.svelte';
 	import { currentProject } from '$lib/stores/project';
 	import { getUserStories, getUserStoryStatuses, getUserStory } from '$lib/api/userstories';
-	import { api } from '$lib/api';
+	import { getProjectMemberships } from '$lib/api/memberships';
 	import type { UserStory, UserStoryStatus, User } from '$lib/api/types';
 
 	let statuses: UserStoryStatus[] = [];
@@ -40,13 +40,21 @@
 		isLoading = true;
 		error = '';
 		try {
-			[statuses, stories, projectMembers] = await Promise.all([
+			const [statusesData, storiesData, membershipsData] = await Promise.all([
 				getUserStoryStatuses(projectId),
 				getUserStories(projectId),
-				api.get<User[]>('/users', { project: projectId })
+				getProjectMemberships(projectId)
 			]);
-			// Sort statuses by order
-			statuses = statuses.sort((a, b) => a.order - b.order);
+			statuses = statusesData.sort((a, b) => a.order - b.order);
+			stories = storiesData;
+			// Map memberships to User format for assignee dropdown
+			projectMembers = membershipsData.map(m => ({
+				id: m.user,
+				full_name: m.full_name,
+				username: m.email.split('@')[0], // memberships don't have username, derive from email
+				photo: m.photo,
+				color: m.color
+			}));
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load board';
 			console.error('Failed to load board:', err);
