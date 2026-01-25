@@ -6,6 +6,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { currentProject } from '$lib/stores/project';
 	import { getProjects, archiveProject, unarchiveProject, isArchived, createProject, updateProject, deleteProject } from '$lib/api/projects';
+	import MembersModal from '$lib/components/MembersModal.svelte';
 	import type { Project } from '$lib/api/types';
 
 	let projects: Project[] = [];
@@ -28,6 +29,9 @@
 
 	// Delete confirmation state
 	let showDeleteConfirm = false;
+
+	// Members modal state
+	let showMembersModal = false;
 	let deletingProject: Project | null = null;
 	let isDeleting = false;
 
@@ -386,6 +390,16 @@
 					</svg>
 					Velocity
 				</a>
+				<button
+					on:click={() => showMembersModal = true}
+					disabled={!$currentProject}
+					class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+					</svg>
+					Members
+				</button>
 			</nav>
 
 			<!-- User & Logout -->
@@ -595,6 +609,15 @@
 					</div>
 				</div>
 			</div>
+		{/if}
+
+		<!-- Members Modal -->
+		{#if showMembersModal && $currentProject}
+			<MembersModal
+				projectId={$currentProject.id}
+				projectName={$currentProject.name}
+				on:close={() => showMembersModal = false}
+			/>
 		{/if}
 	</div>
 {/if}
