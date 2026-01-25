@@ -114,8 +114,8 @@ class TaigaClient {
 			headers
 		});
 
-		// Handle 401 - try to refresh token and retry once
-		if (response.status === 401 && !_isRetry && this.refreshToken) {
+		// Handle 401/403 - try to refresh token and retry once
+		if ((response.status === 401 || response.status === 403) && !_isRetry && this.refreshToken) {
 			const refreshed = await this.tryRefreshToken();
 			if (refreshed) {
 				return this.request<T>(endpoint, { ...options, _isRetry: true });
