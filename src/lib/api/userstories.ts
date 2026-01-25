@@ -2,7 +2,11 @@ import { api } from './client';
 import type { UserStory, UserStoryStatus } from './types';
 
 export async function getUserStories(projectId: number): Promise<UserStory[]> {
-	return api.get<UserStory[]>('/userstories', { project: projectId });
+	return api.get<UserStory[]>('/userstories', {
+		project: projectId,
+		page_size: 500,
+		order_by: '-modified_date'
+	});
 }
 
 export async function getUserStory(id: number): Promise<UserStory> {
