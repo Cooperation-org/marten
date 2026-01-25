@@ -49,7 +49,7 @@
 			projectMembers = membershipsData.map(m => ({
 				id: m.user,
 				full_name: m.full_name,
-				username: m.email.split('@')[0],
+				username: m.full_name || 'user',
 				photo: m.photo,
 				color: m.color
 			}));

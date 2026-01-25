@@ -51,7 +51,7 @@
 			projectMembers = membershipsData.map(m => ({
 				id: m.user,
 				full_name: m.full_name,
-				username: m.email.split('@')[0], // memberships don't have username, derive from email
+				username: m.full_name || 'user',
 				photo: m.photo,
 				color: m.color
 			}));

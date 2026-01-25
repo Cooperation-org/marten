@@ -10,8 +10,9 @@
 
 	let memberships: Membership[] = [];
 	let roles: Role[] = [];
-	let allUsers: { id: number; username: string; full_name: string; email: string }[] = [];
+	let allUsers: { id: number; username: string; full_name: string }[] = [];
 	let isLoading = true;
+	let isLoadingUsers = false;
 	let usersLoaded = false;
 	let error = '';
 
@@ -24,13 +25,12 @@
 	// Filter users client-side - show available (non-member) users
 	$: memberUserIds = new Set(memberships.map(m => m.user));
 	$: availableUsers = allUsers.filter(u => !memberUserIds.has(u.id));
-	$: filteredUsers = searchQuery.length > 0
+	$: filteredUsers = searchQuery.length >= 2
 		? availableUsers.filter(u =>
 			u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			(u.full_name && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-			(u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-		).slice(0, 15)
-		: availableUsers.slice(0, 15); // Show first 15 available users by default
+			(u.full_name && u.full_name.toLowerCase().includes(searchQuery.toLowerCase()))
+		).slice(0, 10)
+		: [];
 
 	onMount(async () => {
 		await loadData();
@@ -40,16 +40,13 @@
 		isLoading = true;
 		error = '';
 		try {
-			// Load memberships, roles, and all users
-			[memberships, roles, allUsers] = await Promise.all([
+			// Only load memberships and roles initially - fast
+			[memberships, roles] = await Promise.all([
 				getProjectMemberships(projectId),
-				getProjectRoles(projectId),
-				getAllUsers()
+				getProjectRoles(projectId)
 			]);
-			usersLoaded = true;
 			// Sort roles by order
 			roles = roles.sort((a, b) => a.order - b.order);
-			// Default to first role
 			if (roles.length > 0 && !selectedRole) {
 				selectedRole = roles[0].id;
 			}
@@ -58,6 +55,25 @@
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	// Load users when user starts typing
+	async function loadUsersIfNeeded() {
+		if (usersLoaded || isLoadingUsers) return;
+		isLoadingUsers = true;
+		try {
+			allUsers = await getAllUsers();
+			usersLoaded = true;
+		} catch (err) {
+			console.error('Failed to load users:', err);
+		} finally {
+			isLoadingUsers = false;
+		}
+	}
+
+	// Trigger user load when search query changes
+	$: if (searchQuery.length >= 2 && !usersLoaded) {
+		loadUsersIfNeeded();
 	}
 
 	function selectUser(user: { id: number; username: string; full_name: string }) {
@@ -208,10 +224,12 @@
 					<input
 						type="text"
 						bind:value={searchQuery}
-						placeholder="Filter available users..."
+						placeholder="Type 2+ chars to search users..."
 						class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan"
 					/>
-					{#if filteredUsers.length > 0}
+					{#if isLoadingUsers}
+						<p class="text-zinc-500 text-sm mt-2">Loading users...</p>
+					{:else if filteredUsers.length > 0}
 						<div class="mt-2 max-h-48 overflow-y-auto border border-border rounded-md">
 							{#each filteredUsers as user}
 								<button
@@ -229,13 +247,10 @@
 								</button>
 							{/each}
 						</div>
-						{#if availableUsers.length > 15}
-							<p class="text-xs text-zinc-600 mt-1">Showing {filteredUsers.length} of {availableUsers.length} available users</p>
-						{/if}
-					{:else if searchQuery.length > 0 && usersLoaded}
+					{:else if searchQuery.length >= 2 && usersLoaded}
 						<p class="text-zinc-500 text-sm mt-2">No users found matching "{searchQuery}"</p>
-					{:else if usersLoaded && availableUsers.length === 0}
-						<p class="text-zinc-500 text-sm mt-2">All users are already members of this project</p>
+					{:else if searchQuery.length > 0 && searchQuery.length < 2}
+						<p class="text-zinc-600 text-sm mt-2">Type at least 2 characters to search</p>
 					{/if}
 				{/if}
 			</div>
