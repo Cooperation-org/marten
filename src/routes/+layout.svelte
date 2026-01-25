@@ -57,10 +57,16 @@
 			projects = loaded.sort((a, b) =>
 				new Date(b.modified_date).getTime() - new Date(a.modified_date).getTime()
 			);
-			// Auto-select first active project if none selected
+			// Restore saved project or auto-select first active
 			const active = projects.filter(p => !isArchived(p));
-			if (active.length > 0 && !$currentProject) {
-				currentProject.set(active[0]);
+			if (!$currentProject) {
+				const savedId = currentProject.getSavedId();
+				const saved = savedId ? projects.find(p => p.id === savedId) : null;
+				if (saved) {
+					currentProject.set(saved);
+				} else if (active.length > 0) {
+					currentProject.set(active[0]);
+				}
 			}
 		} catch (err) {
 			console.error('Failed to load projects:', err);
