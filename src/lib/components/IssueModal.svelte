@@ -41,15 +41,30 @@
 		if (!editSubject.trim() || isSaving) return;
 
 		isSaving = true;
-		try {
-			// Parse tags - keep existing colors where possible
-			const existingTagColors = new Map(story.tags?.map(t => [t[0], t[1]]) || []);
-			const newTags: [string, string | null][] = editTagsText
-				.split(',')
-				.map(t => t.trim())
-				.filter(t => t.length > 0)
-				.map(t => [t, existingTagColors.get(t) || null]);
 
+		// Parse tags - keep existing colors where possible
+		const existingTagColors = new Map(story.tags?.map(t => [t[0], t[1]]) || []);
+		const newTags: [string, string | null][] = editTagsText
+			.split(',')
+			.map(t => t.trim())
+			.filter(t => t.length > 0)
+			.map(t => [t, existingTagColors.get(t) || null]);
+
+		// Optimistic update - close edit mode immediately
+		const optimisticStory: UserStory = {
+			...story,
+			subject: editSubject.trim(),
+			description: editDescription.trim(),
+			status: editStatus,
+			assigned_to: editAssignee,
+			tags: newTags
+		};
+		dispatch('update', optimisticStory);
+		isEditing = false;
+		isSaving = false;
+
+		// Save in background
+		try {
 			const updated = await updateUserStory(story.id, {
 				subject: editSubject.trim(),
 				description: editDescription.trim(),
@@ -58,13 +73,11 @@
 				tags: newTags,
 				version: story.version
 			});
+			// Update with server response (has new version, etc)
 			dispatch('update', updated);
-			isEditing = false;
 		} catch (err) {
 			console.error('Failed to update story:', err);
-			alert('Failed to update: ' + (err as Error).message);
-		} finally {
-			isSaving = false;
+			alert('Failed to save: ' + (err as Error).message);
 		}
 	}
 
@@ -72,15 +85,15 @@
 		if (isDeleting) return;
 
 		isDeleting = true;
+		// Optimistic: close immediately, delete in background
+		dispatch('delete', story.id);
+
 		try {
 			await api.delete(`/userstories/${story.id}`);
-			dispatch('delete', story.id);
 		} catch (err) {
 			console.error('Failed to delete story:', err);
 			alert('Failed to delete: ' + (err as Error).message);
-		} finally {
-			isDeleting = false;
-			showDeleteConfirm = false;
+			// Note: story already removed from UI, would need reload to restore
 		}
 	}
 
