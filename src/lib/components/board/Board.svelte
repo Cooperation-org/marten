@@ -48,7 +48,7 @@
 	}
 </script>
 
-<div class="flex gap-4 p-4 h-full overflow-x-auto">
+<div class="flex gap-4 p-4 overflow-x-auto">
 	{#each statuses.sort((a, b) => a.order - b.order) as status (status.id)}
 		<Column
 			{status}

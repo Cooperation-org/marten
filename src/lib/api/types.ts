@@ -63,6 +63,7 @@ export interface Point {
 export interface UserStory {
 	id: number;
 	ref: number;
+	version: number;
 	subject: string;
 	description: string;
 	status: number;

@@ -19,6 +19,7 @@
 	let editDescription = story.description || '';
 	let editStatus = story.status;
 	let editAssignee = story.assigned_to;
+	let editTagsText = story.tags?.map(t => t[0]).join(', ') || '';
 	let isSaving = false;
 	let isDeleting = false;
 	let showDeleteConfirm = false;
@@ -28,6 +29,7 @@
 		editDescription = story.description || '';
 		editStatus = story.status;
 		editAssignee = story.assigned_to;
+		editTagsText = story.tags?.map(t => t[0]).join(', ') || '';
 		isEditing = true;
 	}
 
@@ -40,11 +42,21 @@
 
 		isSaving = true;
 		try {
+			// Parse tags - keep existing colors where possible
+			const existingTagColors = new Map(story.tags?.map(t => [t[0], t[1]]) || []);
+			const newTags: [string, string | null][] = editTagsText
+				.split(',')
+				.map(t => t.trim())
+				.filter(t => t.length > 0)
+				.map(t => [t, existingTagColors.get(t) || null]);
+
 			const updated = await updateUserStory(story.id, {
 				subject: editSubject.trim(),
 				description: editDescription.trim(),
 				status: editStatus,
-				assigned_to: editAssignee
+				assigned_to: editAssignee,
+				tags: newTags,
+				version: story.version
 			});
 			dispatch('update', updated);
 			isEditing = false;
@@ -191,6 +203,16 @@
 							{/each}
 						</select>
 					</div>
+				</div>
+
+				<div>
+					<label class="block text-sm font-medium text-zinc-400 mb-1">Labels</label>
+					<input
+						type="text"
+						bind:value={editTagsText}
+						placeholder="bug, feature, urgent (comma separated)"
+						class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan focus:border-transparent"
+					/>
 				</div>
 
 				<div>

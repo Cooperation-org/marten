@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import Board from '$lib/components/board/Board.svelte';
 	import IssueModal from '$lib/components/IssueModal.svelte';
 	import CreateStoryModal from '$lib/components/CreateStoryModal.svelte';
 	import { currentProject } from '$lib/stores/project';
-	import { getUserStories, getUserStoryStatuses } from '$lib/api/userstories';
+	import { getUserStories, getUserStoryStatuses, getUserStory } from '$lib/api/userstories';
 	import { api } from '$lib/api';
 	import type { UserStory, UserStoryStatus, User } from '$lib/api/types';
 
@@ -18,6 +20,16 @@
 	let selectedStory: UserStory | null = null;
 	let showCreateModal = false;
 	let createDefaultStatus: number | null = null;
+
+	// Handle URL story param
+	$: storyParam = $page.url.searchParams.get('story');
+	$: if (storyParam && stories.length > 0 && !selectedStory) {
+		const storyRef = parseInt(storyParam);
+		const found = stories.find(s => s.ref === storyRef);
+		if (found) {
+			selectedStory = found;
+		}
+	}
 
 	// Reload when project changes
 	$: if ($currentProject) {
@@ -45,6 +57,7 @@
 
 	function handleStorySelect(e: CustomEvent<UserStory>) {
 		selectedStory = e.detail;
+		goto(`?story=${e.detail.ref}`, { replaceState: true, noScroll: true });
 	}
 
 	function handleStoryUpdate(e: CustomEvent<UserStory>) {
@@ -121,7 +134,7 @@
 		story={selectedStory}
 		{statuses}
 		{projectMembers}
-		on:close={() => selectedStory = null}
+		on:close={() => { selectedStory = null; goto('/board', { replaceState: true, noScroll: true }); }}
 		on:update={handleStoryUpdate}
 		on:delete={handleStoryDelete}
 	/>

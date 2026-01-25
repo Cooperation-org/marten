@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { currentProject } from '$lib/stores/project';
 	import { getUserStories, getUserStoryStatuses } from '$lib/api/userstories';
 	import { api } from '$lib/api';
@@ -15,6 +17,16 @@
 	// Modal state
 	let showCreateModal = false;
 	let selectedStory: UserStory | null = null;
+
+	// Handle URL story param
+	$: storyParam = $page.url.searchParams.get('story');
+	$: if (storyParam && stories.length > 0 && !selectedStory) {
+		const storyRef = parseInt(storyParam);
+		const found = stories.find(s => s.ref === storyRef);
+		if (found) {
+			selectedStory = found;
+		}
+	}
 
 	// Reload when project changes
 	$: if ($currentProject) {
@@ -62,6 +74,20 @@
 
 	function getInitials(name: string): string {
 		return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+	}
+
+	function formatRelativeDate(dateStr: string): string {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+		if (diffDays === 0) return 'today';
+		if (diffDays === 1) return '1d';
+		if (diffDays < 7) return `${diffDays}d`;
+		if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
+		if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
+		return `${Math.floor(diffDays / 365)}y`;
 	}
 </script>
 
@@ -112,12 +138,13 @@
 						<th class="px-6 py-3">Story</th>
 						<th class="px-6 py-3 w-32">Status</th>
 						<th class="px-6 py-3 w-32">Assignee</th>
-						<th class="px-6 py-3 w-20 text-right">Points</th>
+						<th class="px-6 py-3 w-16 text-right">Points</th>
+						<th class="px-6 py-3 w-16 text-right">Updated</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-border">
 					{#each stories as story (story.id)}
-						<tr class="hover:bg-surface-2 transition-colors cursor-pointer group" on:click={() => selectedStory = story}>
+						<tr class="hover:bg-surface-2 transition-colors cursor-pointer group" on:click={() => { selectedStory = story; goto(`?story=${story.ref}`, { replaceState: true, noScroll: true }); }}>
 							<td class="px-6 py-3">
 								<span class="text-zinc-500 text-sm">#{story.ref}</span>
 							</td>
@@ -175,6 +202,9 @@
 							<td class="px-6 py-3 text-right">
 								<span class="text-zinc-100 font-medium">{story.total_points || '-'}</span>
 							</td>
+							<td class="px-6 py-3 text-right">
+								<span class="text-zinc-500 text-xs">{formatRelativeDate(story.modified_date)}</span>
+							</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -207,7 +237,7 @@
 		story={selectedStory}
 		{statuses}
 		{projectMembers}
-		on:close={() => selectedStory = null}
+		on:close={() => { selectedStory = null; goto('/backlog', { replaceState: true, noScroll: true }); }}
 		on:update={handleStoryUpdate}
 		on:delete={handleStoryDelete}
 	/>

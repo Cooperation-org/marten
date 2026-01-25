@@ -41,7 +41,7 @@
 	$: totalPoints = stories.reduce((sum, s) => sum + (s.total_points || 0), 0);
 </script>
 
-<div class="column flex flex-col h-full">
+<div class="column flex flex-col">
 	<!-- Column header -->
 	<div class="flex items-center justify-between px-2 py-1 mb-2">
 		<div class="flex items-center gap-2">
@@ -57,7 +57,7 @@
 
 	<!-- Cards container with drag-drop -->
 	<div
-		class="flex-1 overflow-y-auto space-y-2 min-h-[100px]"
+		class="overflow-y-auto space-y-2 min-h-[100px] max-h-[calc(100vh-220px)]"
 		use:dndzone={{
 			items: stories,
 			flipDurationMs,

@@ -6,6 +6,20 @@
 	function getInitials(name: string): string {
 		return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 	}
+
+	function formatRelativeDate(dateStr: string): string {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+		if (diffDays === 0) return 'today';
+		if (diffDays === 1) return '1d';
+		if (diffDays < 7) return `${diffDays}d`;
+		if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
+		if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
+		return `${Math.floor(diffDays / 365)}y`;
+	}
 </script>
 
 <div class="card group cursor-pointer animate-fade-in">
@@ -48,12 +62,14 @@
 
 	<!-- Footer: points + assignee -->
 	<div class="flex items-center justify-between mt-3 pt-2 border-t border-border/50">
-		<!-- Points -->
-		{#if story.total_points !== null}
-			<span class="text-xs font-medium text-lt-cyan">{story.total_points} pts</span>
-		{:else}
-			<span class="text-xs text-zinc-600">No estimate</span>
-		{/if}
+		<div class="flex items-center gap-2">
+			<!-- Points -->
+			{#if story.total_points !== null}
+				<span class="text-xs font-medium text-lt-cyan">{story.total_points} pts</span>
+			{/if}
+			<!-- Last updated -->
+			<span class="text-[10px] text-zinc-500">{formatRelativeDate(story.modified_date)}</span>
+		</div>
 
 		<!-- Assignee -->
 		{#if story.assigned_to_extra_info}

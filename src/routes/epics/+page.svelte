@@ -56,6 +56,20 @@
 		if (!counts || counts.total === 0) return 0;
 		return Math.round((counts.progress / counts.total) * 100);
 	}
+
+	function formatRelativeDate(dateStr: string): string {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+		if (diffDays === 0) return 'today';
+		if (diffDays === 1) return '1d';
+		if (diffDays < 7) return `${diffDays}d`;
+		if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
+		if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
+		return `${Math.floor(diffDays / 365)}y`;
+	}
 </script>
 
 <svelte:head>
@@ -107,7 +121,10 @@
 						<div class="p-4">
 							<!-- Ref and status -->
 							<div class="flex items-center justify-between mb-2">
-								<span class="text-zinc-500 text-sm">#{epic.ref}</span>
+								<div class="flex items-center gap-2">
+									<span class="text-zinc-500 text-sm">#{epic.ref}</span>
+									<span class="text-zinc-600 text-xs">{formatRelativeDate(epic.modified_date)}</span>
+								</div>
 								<span
 									class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full"
 									style="background-color: {epic.status_extra_info.color}20; color: {epic.status_extra_info.color}"

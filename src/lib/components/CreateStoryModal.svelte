@@ -30,6 +30,7 @@
 		const tempStory: UserStory = {
 			id: tempId,
 			ref: 0,
+			version: 1,
 			subject: subjectText,
 			description: descText,
 			status: statusId || statuses[0]?.id || 0,
