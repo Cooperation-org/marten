@@ -36,10 +36,10 @@ export async function getAllUsers(): Promise<{ id: number; username: string; ful
 	return api.get('/users', { page_size: 500 });
 }
 
-export async function addMembership(projectId: number, userId: number, roleId: number): Promise<Membership> {
+export async function addMembership(projectId: number, username: string, roleId: number): Promise<Membership> {
 	return api.post<Membership>('/memberships', {
 		project: projectId,
-		user: userId,
+		username: username,
 		role: roleId
 	});
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 	import type { UserStory, UserStoryStatus, User } from '$lib/api/types';
-	import { updateUserStory } from '$lib/api/userstories';
+	import { updateUserStory, getUserStory } from '$lib/api/userstories';
 	import { api } from '$lib/api';
 
 	export let story: UserStory;
@@ -14,22 +14,47 @@
 		delete: number;
 	}>();
 
+	let fullStory: UserStory = story;
+	let isLoadingDetail = true;
+
+	// Fetch full story detail (list endpoint doesn't include description)
+	onMount(async () => {
+		try {
+			fullStory = await getUserStory(story.id);
+			dispatch('update', fullStory); // Update parent with full data
+		} catch (err) {
+			console.error('Failed to load story detail:', err);
+			fullStory = story; // Fall back to list data
+		} finally {
+			isLoadingDetail = false;
+		}
+	});
+
 	let isEditing = false;
-	let editSubject = story.subject;
-	let editDescription = story.description || '';
+	let editSubject = '';
+	let editDescription = '';
 	let editStatus = story.status;
 	let editAssignee = story.assigned_to;
-	let editTagsText = story.tags?.map(t => t[0]).join(', ') || '';
+	let editTagsText = '';
 	let isSaving = false;
 	let isDeleting = false;
 	let showDeleteConfirm = false;
 
+	// Update edit fields when fullStory loads
+	$: if (fullStory && !isEditing) {
+		editSubject = fullStory.subject;
+		editDescription = fullStory.description || '';
+		editStatus = fullStory.status;
+		editAssignee = fullStory.assigned_to;
+		editTagsText = fullStory.tags?.map(t => t[0]).join(', ') || '';
+	}
+
 	function startEditing() {
-		editSubject = story.subject;
-		editDescription = story.description || '';
-		editStatus = story.status;
-		editAssignee = story.assigned_to;
-		editTagsText = story.tags?.map(t => t[0]).join(', ') || '';
+		editSubject = fullStory.subject;
+		editDescription = fullStory.description || '';
+		editStatus = fullStory.status;
+		editAssignee = fullStory.assigned_to;
+		editTagsText = fullStory.tags?.map(t => t[0]).join(', ') || '';
 		isEditing = true;
 	}
 
@@ -43,7 +68,7 @@
 		isSaving = true;
 
 		// Parse tags - keep existing colors where possible
-		const existingTagColors = new Map(story.tags?.map(t => [t[0], t[1]]) || []);
+		const existingTagColors = new Map(fullStory.tags?.map(t => [t[0], t[1]]) || []);
 		const newTags: [string, string | null][] = editTagsText
 			.split(',')
 			.map(t => t.trim())
@@ -52,28 +77,30 @@
 
 		// Optimistic update - close edit mode immediately
 		const optimisticStory: UserStory = {
-			...story,
+			...fullStory,
 			subject: editSubject.trim(),
 			description: editDescription.trim(),
 			status: editStatus,
 			assigned_to: editAssignee,
 			tags: newTags
 		};
+		fullStory = optimisticStory;
 		dispatch('update', optimisticStory);
 		isEditing = false;
 		isSaving = false;
 
 		// Save in background
 		try {
-			const updated = await updateUserStory(story.id, {
+			const updated = await updateUserStory(fullStory.id, {
 				subject: editSubject.trim(),
 				description: editDescription.trim(),
 				status: editStatus,
 				assigned_to: editAssignee,
 				tags: newTags,
-				version: story.version
+				version: fullStory.version
 			});
 			// Update with server response (has new version, etc)
+			fullStory = updated;
 			dispatch('update', updated);
 		} catch (err) {
 			console.error('Failed to update story:', err);
@@ -86,10 +113,10 @@
 
 		isDeleting = true;
 		// Optimistic: close immediately, delete in background
-		dispatch('delete', story.id);
+		dispatch('delete', fullStory.id);
 
 		try {
-			await api.delete(`/userstories/${story.id}`);
+			await api.delete(`/userstories/${fullStory.id}`);
 		} catch (err) {
 			console.error('Failed to delete story:', err);
 			alert('Failed to delete: ' + (err as Error).message);
@@ -134,13 +161,13 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between p-4 border-b border-border shrink-0">
 			<div class="flex items-center gap-3">
-				<span class="text-sm font-mono text-zinc-500">#{story.ref}</span>
+				<span class="text-sm font-mono text-zinc-500">#{fullStory.ref}</span>
 				{#if !isEditing}
 					<span
 						class="px-2 py-0.5 text-xs rounded font-medium"
-						style="background-color: {getStatusColor(story.status)}30; color: {getStatusColor(story.status)}"
+						style="background-color: {getStatusColor(fullStory.status)}30; color: {getStatusColor(fullStory.status)}"
 					>
-						{getStatusName(story.status)}
+						{getStatusName(fullStory.status)}
 					</span>
 				{/if}
 			</div>
@@ -239,12 +266,12 @@
 				</div>
 			{:else}
 				<!-- View Mode -->
-				<h2 class="text-xl font-semibold text-zinc-100">{story.subject}</h2>
+				<h2 class="text-xl font-semibold text-zinc-100">{fullStory.subject}</h2>
 
 				<!-- Epics -->
-				{#if story.epics && story.epics.length > 0}
+				{#if fullStory.epics && fullStory.epics.length > 0}
 					<div class="flex flex-wrap gap-2">
-						{#each story.epics as epic}
+						{#each fullStory.epics as epic}
 							<span
 								class="px-2 py-1 text-xs rounded"
 								style="background-color: {epic.color}20; color: {epic.color}"
@@ -261,36 +288,36 @@
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
 						</svg>
-						{#if story.assigned_to_extra_info}
-							<span class="text-zinc-300">{story.assigned_to_extra_info.full_name_display}</span>
+						{#if fullStory.assigned_to_extra_info}
+							<span class="text-zinc-300">{fullStory.assigned_to_extra_info.full_name_display}</span>
 						{:else}
 							<span class="text-zinc-500">Unassigned</span>
 						{/if}
 					</div>
 
-					{#if story.total_points !== null}
+					{#if fullStory.total_points !== null}
 						<div class="flex items-center gap-2 text-zinc-400">
 							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
 							</svg>
-							<span class="text-lt-cyan font-medium">{story.total_points} points</span>
+							<span class="text-lt-cyan font-medium">{fullStory.total_points} points</span>
 						</div>
 					{/if}
 
-					{#if story.milestone_name}
+					{#if fullStory.milestone_name}
 						<div class="flex items-center gap-2 text-zinc-400">
 							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 							</svg>
-							<span class="text-zinc-300">{story.milestone_name}</span>
+							<span class="text-zinc-300">{fullStory.milestone_name}</span>
 						</div>
 					{/if}
 				</div>
 
 				<!-- Tags -->
-				{#if story.tags && story.tags.length > 0}
+				{#if fullStory.tags && fullStory.tags.length > 0}
 					<div class="flex flex-wrap gap-2">
-						{#each story.tags as [tag, color]}
+						{#each fullStory.tags as [tag, color]}
 							<span
 								class="px-2 py-1 text-xs rounded bg-surface-3 text-zinc-400"
 								style={color ? `background-color: ${color}30; color: ${color}` : ''}
@@ -304,8 +331,8 @@
 				<!-- Description -->
 				<div class="pt-4 border-t border-border">
 					<h3 class="text-sm font-medium text-zinc-400 mb-2">Description</h3>
-					{#if story.description}
-						<div class="text-zinc-300 whitespace-pre-wrap">{story.description}</div>
+					{#if fullStory.description}
+						<div class="text-zinc-300 whitespace-pre-wrap">{fullStory.description}</div>
 					{:else}
 						<p class="text-zinc-500 italic">No description</p>
 					{/if}
@@ -314,8 +341,8 @@
 				<!-- Metadata -->
 				<div class="pt-4 border-t border-border text-xs text-zinc-500">
 					<div class="flex gap-4">
-						<span>Created: {new Date(story.created_date).toLocaleDateString()}</span>
-						<span>Updated: {new Date(story.modified_date).toLocaleDateString()}</span>
+						<span>Created: {new Date(fullStory.created_date).toLocaleDateString()}</span>
+						<span>Updated: {new Date(fullStory.modified_date).toLocaleDateString()}</span>
 					</div>
 				</div>
 			{/if}
@@ -357,7 +384,7 @@
 			</div>
 			<div class="p-4">
 				<p class="text-zinc-300">
-					Are you sure you want to delete <strong class="text-zinc-100">#{story.ref}</strong>?
+					Are you sure you want to delete <strong class="text-zinc-100">#{fullStory.ref}</strong>?
 				</p>
 				<p class="text-sm text-zinc-500 mt-2">This action cannot be undone.</p>
 			</div>

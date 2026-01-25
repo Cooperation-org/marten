@@ -68,7 +68,7 @@
 
 		isAdding = true;
 		try {
-			const newMembership = await addMembership(projectId, selectedUser.id, selectedRole);
+			const newMembership = await addMembership(projectId, selectedUser.username, selectedRole);
 			memberships = [...memberships, newMembership];
 			selectedUser = null;
 		} catch (err) {
