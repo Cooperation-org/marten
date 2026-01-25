@@ -101,8 +101,9 @@
 		}
 	}
 
-	function getInitials(name: string): string {
-		return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+	function getInitials(name: string | null | undefined): string {
+		if (!name) return '?';
+		return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
 	}
 </script>
 
