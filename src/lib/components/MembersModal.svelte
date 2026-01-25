@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount } from 'svelte';
-	import { getProjectMemberships, getProjectRoles, searchUsers, addMembership, removeMembership } from '$lib/api/memberships';
+	import { getProjectMemberships, getProjectRoles, getAllUsers, addMembership, removeMembership } from '$lib/api/memberships';
 	import type { Membership, Role } from '$lib/api/memberships';
 
 	export let projectId: number;
@@ -10,16 +10,26 @@
 
 	let memberships: Membership[] = [];
 	let roles: Role[] = [];
+	let allUsers: { id: number; username: string; full_name: string; email: string }[] = [];
 	let isLoading = true;
 	let error = '';
 
 	// Add member state
 	let searchQuery = '';
-	let searchResults: { id: number; username: string; full_name: string; email: string }[] = [];
-	let isSearching = false;
 	let selectedUser: { id: number; username: string; full_name: string } | null = null;
 	let selectedRole: number | null = null;
 	let isAdding = false;
+
+	// Filter users client-side
+	$: memberUserIds = new Set(memberships.map(m => m.user));
+	$: availableUsers = allUsers.filter(u => !memberUserIds.has(u.id));
+	$: filteredUsers = searchQuery.length > 0
+		? availableUsers.filter(u =>
+			u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			(u.full_name && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+			(u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
+		).slice(0, 10)
+		: [];
 
 	onMount(async () => {
 		await loadData();
@@ -29,9 +39,10 @@
 		isLoading = true;
 		error = '';
 		try {
-			[memberships, roles] = await Promise.all([
+			[memberships, roles, allUsers] = await Promise.all([
 				getProjectMemberships(projectId),
-				getProjectRoles(projectId)
+				getProjectRoles(projectId),
+				getAllUsers()
 			]);
 			// Sort roles by order
 			roles = roles.sort((a, b) => a.order - b.order);
@@ -44,28 +55,6 @@
 		} finally {
 			isLoading = false;
 		}
-	}
-
-	let searchTimeout: ReturnType<typeof setTimeout>;
-	function handleSearchInput() {
-		clearTimeout(searchTimeout);
-		if (searchQuery.length < 2) {
-			searchResults = [];
-			return;
-		}
-		searchTimeout = setTimeout(async () => {
-			isSearching = true;
-			try {
-				const results = await searchUsers(searchQuery);
-				// Filter out users already in project
-				const memberUserIds = new Set(memberships.map(m => m.user));
-				searchResults = results.filter(u => !memberUserIds.has(u.id)).slice(0, 10);
-			} catch (err) {
-				console.error('Search failed:', err);
-			} finally {
-				isSearching = false;
-			}
-		}, 300);
 	}
 
 	function selectUser(user: { id: number; username: string; full_name: string }) {
@@ -176,13 +165,12 @@
 					<input
 						type="text"
 						bind:value={searchQuery}
-						on:input={handleSearchInput}
 						placeholder="Search by username or email..."
 						class="w-full px-3 py-2 bg-surface-2 border border-border rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lt-cyan"
 					/>
-					{#if searchResults.length > 0}
+					{#if filteredUsers.length > 0}
 						<div class="absolute top-full left-0 right-0 mt-1 bg-surface-2 border border-border rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
-							{#each searchResults as user}
+							{#each filteredUsers as user}
 								<button
 									on:click={() => selectUser(user)}
 									class="w-full text-left px-3 py-2 hover:bg-surface-3 transition-colors flex items-center gap-2"
@@ -197,9 +185,10 @@
 								</button>
 							{/each}
 						</div>
-					{/if}
-					{#if isSearching}
-						<div class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">...</div>
+					{:else if searchQuery.length > 0}
+						<div class="absolute top-full left-0 right-0 mt-1 bg-surface-2 border border-border rounded-md shadow-lg z-10 p-3 text-zinc-500 text-sm">
+							No users found matching "{searchQuery}"
+						</div>
 					{/if}
 				</div>
 			{/if}

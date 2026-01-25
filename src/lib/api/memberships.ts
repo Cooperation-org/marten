@@ -32,8 +32,8 @@ export async function getProjectRoles(projectId: number): Promise<Role[]> {
 	return api.get<Role[]>('/roles', { project: projectId });
 }
 
-export async function searchUsers(query: string): Promise<{ id: number; username: string; full_name: string; email: string }[]> {
-	return api.get('/users', { q: query });
+export async function getAllUsers(): Promise<{ id: number; username: string; full_name: string; email: string }[]> {
+	return api.get('/users', { page_size: 500 });
 }
 
 export async function addMembership(projectId: number, userId: number, roleId: number): Promise<Membership> {
