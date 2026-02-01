@@ -8,7 +8,16 @@
 	export let stories: UserStory[] = [];
 	export let projectId: number;
 
-	const dispatch = createEventDispatcher<{ select: UserStory; addToColumn: number }>();
+	let errorMessage = '';
+	let errorTimeout: ReturnType<typeof setTimeout>;
+
+	function showError(msg: string) {
+		errorMessage = msg;
+		clearTimeout(errorTimeout);
+		errorTimeout = setTimeout(() => { errorMessage = ''; }, 4000);
+	}
+
+	const dispatch = createEventDispatcher<{ select: UserStory; addToColumn: number; updateStory: UserStory }>();
 
 	function handleSelect(e: CustomEvent<UserStory>) {
 		dispatch('select', e.detail);
@@ -27,23 +36,43 @@
 	async function handleDrop(e: CustomEvent<{ storyId: number; newStatusId: number }>) {
 		const { storyId, newStatusId } = e.detail;
 
-		// Optimistically update local state
 		const storyIndex = stories.findIndex(s => s.id === storyId);
-		if (storyIndex !== -1) {
-			stories[storyIndex] = { ...stories[storyIndex], status: newStatusId };
-			stories = [...stories]; // trigger reactivity
-		}
+		if (storyIndex === -1) return;
+
+		// Save previous state for rollback
+		const previousStatus = stories[storyIndex].status;
+		const previousVersion = stories[storyIndex].version;
+
+		// Optimistically update local state
+		stories[storyIndex] = { ...stories[storyIndex], status: newStatusId };
+		stories = [...stories];
 
 		// Send to API
 		try {
-			await api.patch(`/userstories/${storyId}`, {
+			const updated = await api.patch<UserStory>(`/userstories/${storyId}`, {
 				status: newStatusId,
-				version: stories[storyIndex]?.version
+				version: previousVersion
 			});
+			// Update version from response so subsequent drags work
+			const idx = stories.findIndex(s => s.id === storyId);
+			if (idx !== -1) {
+				stories[idx] = { ...stories[idx], version: updated.version };
+				stories = [...stories];
+			}
 		} catch (error) {
-			// Rollback on error - would need to store previous state
 			console.error('Failed to update story status:', error);
-			// TODO: show toast, rollback
+			// Rollback to previous state
+			const idx = stories.findIndex(s => s.id === storyId);
+			if (idx !== -1) {
+				stories[idx] = { ...stories[idx], status: previousStatus, version: previousVersion };
+				stories = [...stories];
+			}
+			const msg = error instanceof Error ? error.message : 'Failed to update story';
+			if (msg.toLowerCase().includes('permission')) {
+				showError('You do not have permission to move stories in this project.');
+			} else {
+				showError(msg);
+			}
 		}
 	}
 </script>
@@ -59,3 +88,9 @@
 		/>
 	{/each}
 </div>
+
+{#if errorMessage}
+	<div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-3 bg-red-500/15 border border-red-500/30 rounded-lg text-red-400 text-sm shadow-lg backdrop-blur-sm">
+		{errorMessage}
+	</div>
+{/if}
